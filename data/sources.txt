@@ -2,3 +2,6 @@ https://earthexplorer.usgs.gov/
 
 Avalanche outlines in the Alps:
 https://envidat.ch/dataset/spot6-avalanche-outlines-24-january-2018
+
+Euro Topo Map:
+https://www.mapsforeurope.org/access-data
