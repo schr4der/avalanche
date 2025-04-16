@@ -39,7 +39,7 @@ class GeoTiffSegmentationDataset(Dataset):
         return img_tensor, mask_tensor
 
 def get_tile_filename(row, col, base_dir):
-    return os.path.join(base_dir, f"swissalti3d_2024_{row}-{col}_0.5_2056_5728.tif")
+    return os.path.join(base_dir, f"swissalti3d_2024_{row}-{col}_2_2056_5728.tif")
 
 def stitch_tiles(center_row, center_col, base_dir, n_tiles):
     tiles = []
@@ -59,7 +59,7 @@ def stitch_tiles(center_row, center_col, base_dir, n_tiles):
 
     if not tiles:
         raise ValueError("No tiles found.")
-
+    
     # Merge tiles
     mosaic, out_transform = merge(tiles)
 
@@ -93,6 +93,6 @@ def rasterize_shp(shapefile, raster_meta):
 from torch.utils.data import DataLoader
 
 tile_centers = [(2594,1128)]
-train_dataset = GeoTiffSegmentationDataset(tile_centers, 3, "../data/topo_maps/", "../data/ava_outlines/outlines2018.shp")
+train_dataset = GeoTiffSegmentationDataset(tile_centers, 3, "../data/topo_maps/swiss_topo/", "../data/ava_outlines/outlines2018.shp")
 train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True)
 print(next(iter(train_loader)))
