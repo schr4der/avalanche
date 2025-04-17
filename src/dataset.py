@@ -30,6 +30,26 @@ class GeoTiffSegmentationDataset(Dataset):
             if x%self.step_size == 0 and y%self.step_size==0:
                 self.tile_centers.append((x, y))
         print(self.tile_centers)
+        
+        # Convert to a set for fast lookup
+        coord_set = set(self.tile_centers)
+        print(coord_set)
+
+        # Define relative offsets for 8 neighbors
+        neighbor_offsets = [
+            (-1, -1), (-1, 0), (-1, 1),
+            ( 0, -1),         ( 0, 1),
+            ( 1, -1), ( 1, 0), ( 1, 1)
+        ]
+
+        # Keep only the coordinates where all 8 neighbors are present
+        self.tile_centers = [
+            (x, y)
+            for (x, y) in self.tile_centers
+            if all((x + dx, y + dy) in coord_set for dx, dy in neighbor_offsets)
+        ]
+
+        print(self.tile_centers)
 
 
     def __len__(self):
@@ -109,6 +129,6 @@ def rasterize_shp(shapefile, raster_meta):
 from torch.utils.data import DataLoader
 
 # tile_centers = [(2594,1128)]
-train_dataset = GeoTiffSegmentationDataset(3, 2, "../data/topo_maps/swiss_topo/", "../data/ava_outlines/outlines2018.shp")
+train_dataset = GeoTiffSegmentationDataset(3, 1, "../data/topo_maps/swiss_topo/", "../data/ava_outlines/outlines2018.shp")
 train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True)
 print(next(iter(train_loader)))
