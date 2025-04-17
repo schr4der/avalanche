@@ -1,88 +1,129 @@
-import rasterio
-import geopandas as gpd
+from dataset import GeoTiffSegmentationDataset
+from model import UNet
+from utils import dice_coefficient
+
+from torch.utils.data import DataLoader, random_split
+from torch import Generator, nn
+
 import matplotlib.pyplot as plt
-from rasterio.plot import show
-from rasterio.features import rasterize
-from rasterio.merge import merge
-from pyproj import Transformer
 import numpy as np
-import math
-import os
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torchvision.transforms as transforms
+from PIL import Image
+from numpy import linalg as LA
+from torch import optim, nn
+from torch.utils.data import DataLoader, random_split
+from torch.utils.data.dataset import Dataset
+from torchvision import transforms
+from tqdm import tqdm
 
-n_tiles = 3
+# Setup Hardware
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
-def get_tile_filename(row, col, base_dir):
-    return os.path.join(base_dir, f"swissalti3d_2024_{row}-{col}_0.5_2056_5728.tif")
+if device == "cuda":
+    num_workers = torch.cuda.device_count() * 4
+else:
+    num_workers = 1
 
-def stitch_tiles(center_row, center_col, base_dir):
-    tiles = []
+# Load Dataset 
+generator = Generator().manual_seed(421)
+tile_centers = [(2594,1128)]
+dataset = GeoTiffSegmentationDataset(tile_centers, 10, "../data/topo_maps/swiss_topo/", "../data/ava_outlines/outlines2018.shp")
+
+
+
+# Split test/train/val
+train_dataset, test_dataset = random_split(dataset, [0.8, 0.2], generator=generator)
+test_dataset, val_dataset = random_split(test_dataset, [0.5, 0.5], generator=generator)
+
+# Setup Model
+LEARNING_RATE = 3e-4
+BATCH_SIZE = 8
+
+train_dataloader = DataLoader(dataset=train_dataset,
+                              num_workers=num_workers, pin_memory=False,
+                              batch_size=BATCH_SIZE,
+                              shuffle=True)
+
+val_dataloader = DataLoader(dataset=val_dataset,
+                            num_workers=num_workers, pin_memory=False,
+                            batch_size=BATCH_SIZE,
+                            shuffle=True)
+
+test_dataloader = DataLoader(dataset=test_dataset,
+                            num_workers=num_workers, pin_memory=False,
+                            batch_size=BATCH_SIZE,
+                            shuffle=True)
+
+model = UNet(in_channels=3, num_classes=1).to(device)
+optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE)
+criterion = nn.BCEWithLogitsLoss()
+
+EPOCHS = 10
+
+train_losses = []
+train_dcs = []
+val_losses = []
+val_dcs = []
+
+for epoch in tqdm(range(EPOCHS)):
+    model.train()
+    train_running_loss = 0
+    train_running_dc = 0
     
-    # Loop over 3x3 neighborhood
-    offset = math.floor(n_tiles/2)
-    for dr in range(-offset, offset+1):
-        for dc in range(-offset, offset+1):
-            r = center_row + dr
-            c = center_col + dc
-            filepath = get_tile_filename(r, c, base_dir)
-            if os.path.exists(filepath):
-                src = rasterio.open(filepath)
-                tiles.append(src)
-            else:
-                print(f"Missing tile: {filepath}")
+    for idx, img_mask in enumerate(tqdm(train_dataloader, position=0, leave=True)):
+        img = img_mask[0].float().to(device)
+        mask = img_mask[1].float().to(device)
+        
+        y_pred = model(img)
+        optimizer.zero_grad()
+        
+        dc = dice_coefficient(y_pred, mask)
+        loss = criterion(y_pred, mask)
+        
+        train_running_loss += loss.item()
+        train_running_dc += dc.item()
 
-    if not tiles:
-        raise ValueError("No tiles found.")
+        loss.backward()
+        optimizer.step()
 
-    # Merge tiles
-    mosaic, out_transform = merge(tiles)
+    train_loss = train_running_loss / (idx + 1)
+    train_dc = train_running_dc / (idx + 1)
+    
+    train_losses.append(train_loss)
+    train_dcs.append(train_dc)
 
-    # Use metadata from the first tile
-    out_meta = tiles[0].meta.copy()
-    out_meta.update({
-        "height": mosaic.shape[1],
-        "width": mosaic.shape[2],
-        "transform": out_transform
-    })
+    model.eval()
+    val_running_loss = 0
+    val_running_dc = 0
+    
+    with torch.no_grad():
+        for idx, img_mask in enumerate(tqdm(val_dataloader, position=0, leave=True)):
+            img = img_mask[0].float().to(device)
+            mask = img_mask[1].float().to(device)
 
-    # Close all files
-    for src in tiles:
-        src.close()
+            y_pred = model(img)
+            loss = criterion(y_pred, mask)
+            dc = dice_coefficient(y_pred, mask)
+            
+            val_running_loss += loss.item()
+            val_running_dc += dc.item()
 
-    return mosaic, out_meta
+        val_loss = val_running_loss / (idx + 1)
+        val_dc = val_running_dc / (idx + 1)
+    
+    val_losses.append(val_loss)
+    val_dcs.append(val_dc)
 
-# Load raster
-src, metadata = stitch_tiles(2594, 1128, "../data/topo_maps/")
-transform = metadata['transform']
-raster_crs = metadata['crs']
-raster_shape = (metadata["height"], metadata["width"])
+    print("-" * 30)
+    print(f"Training Loss EPOCH {epoch + 1}: {train_loss:.4f}")
+    print(f"Training DICE EPOCH {epoch + 1}: {train_dc:.4f}")
+    print("\n")
+    print(f"Validation Loss EPOCH {epoch + 1}: {val_loss:.4f}")
+    print(f"Validation DICE EPOCH {epoch + 1}: {val_dc:.4f}")
+    print("-" * 30)
 
-# Load and reproject shapefile
-gdf = gpd.read_file("../data/ava_outlines/outlines2018.shp")
-if gdf.crs != raster_crs:
-    gdf = gdf.to_crs(raster_crs)
-
-# Create mask
-mask = rasterize(
-    [(geom, 1) for geom in gdf.geometry],
-    out_shape=raster_shape,
-    transform=transform,
-    fill=0,
-    dtype="uint8"
-)
-
-# Create a masked array to hide the background (0s)
-masked_mask = np.ma.masked_where(mask == 0, mask)
-
-# Plot
-plt.figure(figsize=(10, 10))
-plt.title("TIFF with Bright Colored Mask Overlay")
-
-# Show TIFF in grayscale
-plt.imshow(src[0], cmap="gray")
-
-# Overlay the mask in bright green (you can change the colormap)
-plt.imshow(masked_mask, cmap="spring", alpha=0.6)
-
-plt.axis("off")
-plt.show()
-
+# Saving the model
+torch.save(model.state_dict(), 'my_checkpoint.pth')

@@ -90,6 +90,6 @@ class UNet(nn.Module):
         return out
 
 input_image = torch.rand((1,3,512,512))
-model = UNet(1,2)
+model = UNet(3,2)
 output = model(input_image)
 print(output.size())
