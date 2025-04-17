@@ -7,14 +7,30 @@ from rasterio.merge import merge
 import geopandas as gpd
 import math
 import os
+import re
 
 class GeoTiffSegmentationDataset(Dataset):
-    def __init__(self, tile_centers, tile_size, tiff_dir, shp_path, transform=None):
-        self.tile_centers = tile_centers  # list of (row, col)
+    def __init__(self, tile_size, step_size, tiff_dir, shp_path, transform=None):
         self.tiff_dir = tiff_dir
         self.shapefile = gpd.read_file(shp_path)
         self.transform = transform
         self.tile_size = tile_size
+        self.step_size = step_size
+        filenames = [f for f in os.listdir(tiff_dir) if os.path.isfile(os.path.join(tiff_dir, f))]
+
+        self.tile_centers = []  # list of (row, col)
+        for filename in filenames:
+            match = re.search(r'_(\d{4}-\d{4})_', filename)
+            if match:
+                coords = match.group(1).split('-')
+            else:
+                print("error: unrecognized tif file format")
+            x = int(coords[0])
+            y = int(coords[1])
+            if x%self.step_size == 0 and y%self.step_size==0:
+                self.tile_centers.append((x, y))
+        print(self.tile_centers)
+
 
     def __len__(self):
         return len(self.tile_centers)
@@ -92,7 +108,7 @@ def rasterize_shp(shapefile, raster_meta):
 #Todo train/val/test split
 from torch.utils.data import DataLoader
 
-tile_centers = [(2594,1128)]
-train_dataset = GeoTiffSegmentationDataset(tile_centers, 3, "../data/topo_maps/swiss_topo/", "../data/ava_outlines/outlines2018.shp")
+# tile_centers = [(2594,1128)]
+train_dataset = GeoTiffSegmentationDataset(3, 2, "../data/topo_maps/swiss_topo/", "../data/ava_outlines/outlines2018.shp")
 train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True)
 print(next(iter(train_loader)))
