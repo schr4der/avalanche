@@ -8,6 +8,7 @@ import geopandas as gpd
 import math
 import os
 import re
+import glob
 
 class GeoTiffSegmentationDataset(Dataset):
     def __init__(self, tile_size, step_size, tiff_dir, shp_path, transform=None):
@@ -17,23 +18,23 @@ class GeoTiffSegmentationDataset(Dataset):
         self.tile_size = tile_size
         self.step_size = step_size
         filenames = [f for f in os.listdir(tiff_dir) if os.path.isfile(os.path.join(tiff_dir, f))]
-
+        # print(filenames)
         self.tile_centers = []  # list of (row, col)
         for filename in filenames:
-            match = re.search(r'_(\d{4}-\d{4})_', filename)
+            match = re.search(r'_(\d+-\d+)_', filename)
             if match:
                 coords = match.group(1).split('-')
-            else:
-                print("error: unrecognized tif file format")
-            x = int(coords[0])
-            y = int(coords[1])
-            if x%self.step_size == 0 and y%self.step_size==0:
+                x = int(coords[0])
+                y = int(coords[1])
                 self.tile_centers.append((x, y))
-        print(self.tile_centers)
+            else:
+                print(filename)
+                print("error: unrecognized tif file format")
+
+        
         
         # Convert to a set for fast lookup
         coord_set = set(self.tile_centers)
-        print(coord_set)
 
         # Define relative offsets for 8 neighbors
         neighbor_offsets = [
@@ -41,15 +42,18 @@ class GeoTiffSegmentationDataset(Dataset):
             ( 0, -1),         ( 0, 1),
             ( 1, -1), ( 1, 0), ( 1, 1)
         ]
-
+        print("before")
         # Keep only the coordinates where all 8 neighbors are present
+        # TODO generalize to nxn
         self.tile_centers = [
             (x, y)
             for (x, y) in self.tile_centers
             if all((x + dx, y + dy) in coord_set for dx, dy in neighbor_offsets)
         ]
-
-        print(self.tile_centers)
+        self.tile_centers = list(filter(
+            lambda pair: pair[0] % self.step_size == 0 and pair[1] % self.step_size == 0,
+            self.tile_centers
+        ))
 
 
     def __len__(self):
@@ -75,7 +79,13 @@ class GeoTiffSegmentationDataset(Dataset):
         return img_tensor, mask_tensor
 
 def get_tile_filename(row, col, base_dir):
-    return os.path.join(base_dir, f"swissalti3d_2024_{row}-{col}_2_2056_5728.tif")
+    pattern = os.path.join(base_dir, f"swissalti3d_*_{row}-{col}_2_2056_5728.tif")
+    matches = glob.glob(pattern)
+    if not matches:
+        raise FileNotFoundError(f"No file found for tile {row}-{col}")
+    if len(matches) > 1:
+        raise RuntimeError(f"Multiple files found for tile {row}-{col}: {matches}")
+    return matches[0]
 
 def stitch_tiles(center_row, center_col, base_dir, n_tiles):
     tiles = []
@@ -124,11 +134,11 @@ def rasterize_shp(shapefile, raster_meta):
     )
     return mask
 
-#Use like:
-#Todo train/val/test split
-from torch.utils.data import DataLoader
+# #Use like:
+# #Todo train/val/test split
+# from torch.utils.data import DataLoader
 
-# tile_centers = [(2594,1128)]
-train_dataset = GeoTiffSegmentationDataset(3, 1, "../data/topo_maps/swiss_topo/", "../data/ava_outlines/outlines2018.shp")
-train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True)
-print(next(iter(train_loader)))
+# # tile_centers = [(2594,1128)]
+# train_dataset = GeoTiffSegmentationDataset(3, 1, "../data/topo_maps/swiss_topo/", "../data/ava_outlines/outlines2018.shp")
+# train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True)
+# print(next(iter(train_loader)))
