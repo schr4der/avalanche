@@ -5,6 +5,7 @@ import numpy as np
 from rasterio.features import rasterize
 from rasterio.merge import merge
 import geopandas as gpd
+import torch.nn.functional as F
 import math
 import os
 import re
@@ -76,6 +77,10 @@ class GeoTiffSegmentationDataset(Dataset):
         if self.transform:
             img_tensor, mask_tensor = self.transform(img_tensor, mask_tensor)
 
+        img_tensor, original_size = pad_to_multiple(img_tensor, 16)
+        mask_tensor, _ = pad_to_multiple(mask_tensor.unsqueeze(0), 16)
+        mask_tensor = mask_tensor.squeeze(0)
+
         return img_tensor, mask_tensor
 
 def get_tile_filename(row, col, base_dir):
@@ -133,6 +138,14 @@ def rasterize_shp(shapefile, raster_meta):
         dtype='uint8'
     )
     return mask
+
+def pad_to_multiple(tensor, multiple):
+    _, h, w = tensor.shape
+    pad_h = (multiple - h % multiple) % multiple
+    pad_w = (multiple - w % multiple) % multiple
+
+    padding = (0, pad_w, 0, pad_h)  # (left, right, top, bottom)
+    return F.pad(tensor, padding, mode='constant', value=0), (h, w)
 
 # #Use like:
 # #Todo train/val/test split

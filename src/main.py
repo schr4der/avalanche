@@ -81,8 +81,11 @@ def main():
         for idx, img_mask in enumerate(tqdm(train_dataloader, position=0, leave=True)):
             img = img_mask[0].float().to(device)
             mask = img_mask[1].float().to(device)
+            mask = mask.unsqueeze(1)
             
             y_pred = model(img)
+            _, _, h_tgt, w_tgt = mask.shape
+            y_pred = y_pred[:, :, :h_tgt, :w_tgt]
             optimizer.zero_grad()
             
             dc = dice_coefficient(y_pred, mask)
@@ -108,6 +111,7 @@ def main():
             for idx, img_mask in enumerate(tqdm(val_dataloader, position=0, leave=True)):
                 img = img_mask[0].float().to(device)
                 mask = img_mask[1].float().to(device)
+                mask = mask.unsqueeze(1)
 
                 y_pred = model(img)
                 loss = criterion(y_pred, mask)
