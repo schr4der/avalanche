@@ -80,6 +80,23 @@ class GeoTiffSegmentationDataset(Dataset):
         img_tensor, original_size = pad_to_multiple(img_tensor, 16)
         mask_tensor, _ = pad_to_multiple(mask_tensor.unsqueeze(0), 16)
         mask_tensor = mask_tensor.squeeze(0)
+            
+        print(f"Shape Img: {img_tensor.shape}")
+        print(f"Shape Mask: {mask_tensor.shape}")
+
+        # --- 🔽 Downsample both image and mask ---
+        scale = 0.5  # or any float < 1.0
+
+        # Downsample image: [C, H, W] -> [1, C, H, W] -> interpolate -> [C, h, w]
+        img_tensor = F.interpolate(img_tensor.unsqueeze(0), scale_factor=scale, mode='bilinear', align_corners=False)
+        img_tensor = img_tensor.squeeze(0)
+
+        # Downsample mask: [H, W] -> [1, 1, H, W] -> interpolate -> [h, w]
+        mask_tensor = F.interpolate(mask_tensor.unsqueeze(0).unsqueeze(0).float(), scale_factor=scale, mode='nearest')
+        mask_tensor = mask_tensor.squeeze(0).squeeze(0).long()
+            
+        print(f"Downsampled Shape Img: {img_tensor.shape}")
+        print(f"Downsampled Shape Mask: {mask_tensor.shape}")
 
         return img_tensor, mask_tensor
 
