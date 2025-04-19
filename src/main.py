@@ -1,5 +1,6 @@
 from dataset import GeoTiffSegmentationDataset
 from model import UNet
+from simpleModel import SimpleFCN
 from utils import dice_coefficient
 
 from torch.utils.data import DataLoader, random_split
@@ -43,7 +44,7 @@ def main():
 
     # Setup Model
     LEARNING_RATE = 3e-4
-    BATCH_SIZE = 1
+    BATCH_SIZE = 4
 
     train_dataloader = DataLoader(dataset=train_dataset,
                                 num_workers=num_workers, pin_memory=False,
@@ -60,7 +61,7 @@ def main():
                                 batch_size=BATCH_SIZE,
                                 shuffle=True)
 
-    model = UNet(in_channels=1, num_classes=1).to(device)
+    model = SimpleFCN(in_channels=1, num_classes=1).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE)
     criterion = nn.BCEWithLogitsLoss()
 
