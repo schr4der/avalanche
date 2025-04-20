@@ -1,0 +1,13 @@
+torch
+torchvision
+torchaudio
+rasterio
+geopandas
+tqdm
+matplotlib
+pillow
+numpy
+scikit-image
+shapely
+fiona
+pyproj

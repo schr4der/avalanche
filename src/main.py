@@ -1,5 +1,6 @@
 from dataset import GeoTiffSegmentationDataset
 from model import UNet
+from simpleModel import SimpleFCN
 from utils import dice_coefficient
 
 from torch.utils.data import DataLoader, random_split
@@ -28,7 +29,7 @@ def main():
         num_workers = torch.cuda.device_count() * 1
         torch.cuda.empty_cache()
     else:
-        num_workers = 1
+        num_workers = 4
 
     # Load Dataset 
     generator = Generator().manual_seed(421)
@@ -43,7 +44,7 @@ def main():
 
     # Setup Model
     LEARNING_RATE = 3e-4
-    BATCH_SIZE = 1
+    BATCH_SIZE = 4
 
     train_dataloader = DataLoader(dataset=train_dataset,
                                 num_workers=num_workers, pin_memory=False,
@@ -60,7 +61,7 @@ def main():
                                 batch_size=BATCH_SIZE,
                                 shuffle=True)
 
-    model = UNet(in_channels=1, num_classes=1).to(device)
+    model = SimpleFCN(in_channels=1, num_classes=1).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE)
     criterion = nn.BCEWithLogitsLoss()
 
@@ -88,8 +89,9 @@ def main():
             y_pred = y_pred[:, :, :h_tgt, :w_tgt]
             optimizer.zero_grad()
             
-            dc = dice_coefficient(y_pred, mask)
             loss = criterion(y_pred, mask)
+
+            dc = dice_coefficient(torch.sigmoid(y_pred), mask)
             
             train_running_loss += loss.item()
             train_running_dc += dc.item()
@@ -115,7 +117,7 @@ def main():
 
                 y_pred = model(img)
                 loss = criterion(y_pred, mask)
-                dc = dice_coefficient(y_pred, mask)
+                dc = dice_coefficient(torch.sigmoid(y_pred), mask)
                 
                 val_running_loss += loss.item()
                 val_running_dc += dc.item()
