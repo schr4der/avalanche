@@ -86,11 +86,12 @@ def main():
             
             y_pred = model(img)
             _, _, h_tgt, w_tgt = mask.shape
-            y_pred = nn.Sigmoid(y_pred[:, :, :h_tgt, :w_tgt])
+            y_pred = y_pred[:, :, :h_tgt, :w_tgt]
             optimizer.zero_grad()
             
-            dc = dice_coefficient(y_pred, mask)
             loss = criterion(y_pred, mask)
+
+            dc = dice_coefficient(torch.sigmoid(y_pred), mask)
             
             train_running_loss += loss.item()
             train_running_dc += dc.item()
@@ -115,9 +116,8 @@ def main():
                 mask = mask.unsqueeze(1)
 
                 y_pred = model(img)
-                y_pred = nn.Sigmoid(y_pred)
                 loss = criterion(y_pred, mask)
-                dc = dice_coefficient(y_pred, mask)
+                dc = dice_coefficient(torch.sigmoid(y_pred), mask)
                 
                 val_running_loss += loss.item()
                 val_running_dc += dc.item()
