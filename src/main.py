@@ -29,7 +29,7 @@ def main():
         num_workers = torch.cuda.device_count() * 1
         torch.cuda.empty_cache()
     else:
-        num_workers = 1
+        num_workers = 4
 
     # Load Dataset 
     generator = Generator().manual_seed(421)
@@ -86,7 +86,7 @@ def main():
             
             y_pred = model(img)
             _, _, h_tgt, w_tgt = mask.shape
-            y_pred = y_pred[:, :, :h_tgt, :w_tgt]
+            y_pred = nn.Sigmoid(y_pred[:, :, :h_tgt, :w_tgt])
             optimizer.zero_grad()
             
             dc = dice_coefficient(y_pred, mask)
@@ -115,6 +115,7 @@ def main():
                 mask = mask.unsqueeze(1)
 
                 y_pred = model(img)
+                y_pred = nn.Sigmoid(y_pred)
                 loss = criterion(y_pred, mask)
                 dc = dice_coefficient(y_pred, mask)
                 
