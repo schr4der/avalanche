@@ -43,7 +43,6 @@ class GeoTiffSegmentationDataset(Dataset):
             ( 0, -1),         ( 0, 1),
             ( 1, -1), ( 1, 0), ( 1, 1)
         ]
-        print("before")
         # Keep only the coordinates where all 8 neighbors are present
         # TODO generalize to nxn
         self.tile_centers = [
@@ -56,6 +55,45 @@ class GeoTiffSegmentationDataset(Dataset):
             self.tile_centers
         ))
 
+        # Added: build samples and compute stats
+        filtered_samples = []
+        cut_samples = []
+        n_pixels = 0
+        mean = 0.0
+        M2 = 0.0
+
+        for row, col in self.tile_centers:
+            img, meta = stitch_tiles(row, col, self.tiff_dir, self.tile_size)
+            mask = rasterize_shp(self.shapefile, meta)
+            img = torch.from_numpy(img).float()
+            mask = torch.from_numpy(mask)
+            # Check for all-zero masks
+            if torch.any(mask):  # Skip all-zero masks
+                filtered_samples.append((row, col))
+
+                pixels = img.view(-1)  # Flatten all pixels
+                n = pixels.numel()
+                new_mean = pixels.mean().item()
+                new_M2 = ((pixels - new_mean) ** 2).sum().item()
+
+                # Combine means and M2s (parallel variance update)
+                delta = new_mean - mean
+                total_n = n_pixels + n
+                mean += delta * n / total_n
+                M2 += new_M2 + delta**2 * n_pixels * n / total_n
+                n_pixels = total_n
+            else:
+                cut_samples.append((row, col))
+            print("center parsed")
+        self.mean = mean
+        self.std = (M2 / (n_pixels - 1)) ** 0.5
+
+        print(cut_samples)
+        print(f"Streaming mean: {self.mean:.4f}, std: {self.std:.4f}")
+        print(f"Kept {len(filtered_samples)} / {len(self.center_tiles)} samples.")
+
+        self.tile_centers = filtered_samples
+
 
     def __len__(self):
         return len(self.tile_centers)
@@ -65,14 +103,21 @@ class GeoTiffSegmentationDataset(Dataset):
         
         # --- Load stitched image and metadata ---
         image, meta = stitch_tiles(row, col, self.tiff_dir, self.tile_size)
-        image = normalize(image)
+        image = self.normalize(image)
         # --- Rasterize shapefile to match the image extent ---
         mask = rasterize_shp(self.shapefile, meta)
 
         # Normalize and convert to torch
         img_tensor = torch.from_numpy(image).float()  # shape: [C, H, W]
         mask_tensor = torch.from_numpy(mask).long()   # shape: [H, W]
+        mask_bool = mask_tensor.bool()  # Make sure it's boolean (or binary 0/1)
 
+        num_ones = mask_bool.sum().item()
+        num_pixels = mask_bool.numel()
+        num_zeros = num_pixels - num_ones
+
+        print(f"Number of 1s: {num_ones}")
+        print(f"Number of 0s: {num_zeros}")
         # Apply any custom transform (augmentations etc.)
         if self.transform:
             img_tensor, mask_tensor = self.transform(img_tensor, mask_tensor)
@@ -81,10 +126,10 @@ class GeoTiffSegmentationDataset(Dataset):
         mask_tensor, _ = pad_to_multiple(mask_tensor.unsqueeze(0), 16)
         mask_tensor = mask_tensor.squeeze(0)
             
-        print(f"Shape Img: {img_tensor.shape}")
-        print(f"Shape Mask: {mask_tensor.shape}")
+        # print(f"Shape Img: {img_tensor.shape}")
+        # print(f"Shape Mask: {mask_tensor.shape}")
 
-        # --- 🔽 Downsample both image and mask ---
+        # --- Downsample both image and mask ---
         scale = 0.5  # or any float < 1.0
 
         # Downsample image: [C, H, W] -> [1, C, H, W] -> interpolate -> [C, h, w]
@@ -95,14 +140,14 @@ class GeoTiffSegmentationDataset(Dataset):
         mask_tensor = F.interpolate(mask_tensor.unsqueeze(0).unsqueeze(0).float(), scale_factor=scale, mode='nearest')
         mask_tensor = mask_tensor.squeeze(0).squeeze(0).long()
             
-        print(f"Downsampled Shape Img: {img_tensor.shape}")
-        print(f"Downsampled Shape Mask: {mask_tensor.shape}")
+        # print(f"Downsampled Shape Img: {img_tensor.shape}")
+        # print(f"Downsampled Shape Mask: {mask_tensor.shape}")
 
         return img_tensor, mask_tensor
 
-#TODO improve to mean/std dataset stats img = (img - mean) / std
-def normalize(img):
-    return (img - img.min()) / (img.max() - img.min() + 1e-8)
+    #TODO improve to mean/std dataset stats img = (img - mean) / std
+    def normalize(self, img):
+        return (img - self.mean) /self.std
 
 def get_tile_filename(row, col, base_dir):
     pattern = os.path.join(base_dir, f"swissalti3d_*_{row}-{col}_2_2056_5728.tif")

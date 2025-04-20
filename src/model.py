@@ -87,6 +87,8 @@ class UNet(nn.Module):
         up_4 = self.up_convolution_4(up_3, down_1)
 
         out = self.out(up_4)
+        Print("model pred")
+        print(torch.sigmoid(out))
         return out
 
 # input_image = torch.rand((1,3,512,512))

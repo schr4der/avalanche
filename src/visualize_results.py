@@ -23,7 +23,6 @@ def visualize_prediction():
 
     # Pick one sample from the test dataset
     img, true_mask = test_dataset[50]
-    print(img)
     train_img, train_mask = train_dataset[19]
     img = img.unsqueeze(0).float().to(device)  # add batch dimension
 

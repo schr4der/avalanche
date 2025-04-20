@@ -1,6 +1,7 @@
 from dataset import GeoTiffSegmentationDataset
 from model import UNet
 from simpleModel import SimpleFCN
+from uNetSmaller import UNet_Modified
 from utils import dice_coefficient
 
 from torch.utils.data import DataLoader, random_split
@@ -61,11 +62,12 @@ def main():
                                 batch_size=BATCH_SIZE,
                                 shuffle=True)
 
-    model = SimpleFCN(in_channels=1, num_classes=1).to(device)
+    model = UNet_Modified(in_channels=1, num_classes=1).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE)
-    criterion = nn.BCEWithLogitsLoss()
+    pos_weight = torch.tensor([3]).to(device)
+    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
-    EPOCHS = 10
+    EPOCHS = 2
 
     train_losses = []
     train_dcs = []
@@ -88,7 +90,6 @@ def main():
             _, _, h_tgt, w_tgt = mask.shape
             y_pred = y_pred[:, :, :h_tgt, :w_tgt]
             optimizer.zero_grad()
-            
             loss = criterion(y_pred, mask)
 
             dc = dice_coefficient(torch.sigmoid(y_pred), mask)
