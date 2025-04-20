@@ -65,7 +65,7 @@ class GeoTiffSegmentationDataset(Dataset):
         
         # --- Load stitched image and metadata ---
         image, meta = stitch_tiles(row, col, self.tiff_dir, self.tile_size)
-
+        image = normalize(image)
         # --- Rasterize shapefile to match the image extent ---
         mask = rasterize_shp(self.shapefile, meta)
 
@@ -82,6 +82,10 @@ class GeoTiffSegmentationDataset(Dataset):
         mask_tensor = mask_tensor.squeeze(0)
 
         return img_tensor, mask_tensor
+
+#TODO improve to mean/std dataset stats img = (img - mean) / std
+def normalize(img):
+    return (img - img.min()) / (img.max() - img.min() + 1e-8)
 
 def get_tile_filename(row, col, base_dir):
     pattern = os.path.join(base_dir, f"swissalti3d_*_{row}-{col}_2_2056_5728.tif")
