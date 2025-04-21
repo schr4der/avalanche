@@ -10,6 +10,7 @@ import math
 import os
 import re
 import glob
+from shapely.geometry import box
 
 class GeoTiffSegmentationDataset(Dataset):
     def __init__(self, tile_size, step_size, tiff_dir, shp_path, transform=None):
@@ -134,6 +135,14 @@ def stitch_tiles(center_row, center_col, base_dir, n_tiles):
 
 def rasterize_shp(shapefile, raster_meta):
     gdf = shapefile.to_crs(raster_meta['crs'])
+
+    bounds = rasterio.transform.array_bounds(
+        raster_meta['height'], raster_meta['width'], raster_meta['transform']
+    )
+    raster_box = box(*bounds)
+
+    gdf =  gdf[gdf.intersects(raster_box)]
+
     mask = rasterize(
         [(geom, 1) for geom in gdf.geometry],
         out_shape=(raster_meta['height'], raster_meta['width']),
