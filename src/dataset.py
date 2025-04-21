@@ -18,6 +18,8 @@ class GeoTiffSegmentationDataset(Dataset):
         self.transform = transform
         self.tile_size = tile_size
         self.step_size = step_size
+        self.mean = 2086.4147
+        self.std = 647.2937
         filenames = [f for f in os.listdir(tiff_dir) if os.path.isfile(os.path.join(tiff_dir, f))]
         # print(filenames)
         self.tile_centers = []  # list of (row, col)
@@ -62,37 +64,37 @@ class GeoTiffSegmentationDataset(Dataset):
         mean = 0.0
         M2 = 0.0
 
-        for row, col in self.tile_centers:
-            img, meta = stitch_tiles(row, col, self.tiff_dir, self.tile_size)
-            mask = rasterize_shp(self.shapefile, meta)
-            img = torch.from_numpy(img).float()
-            mask = torch.from_numpy(mask)
-            # Check for all-zero masks
-            if torch.any(mask):  # Skip all-zero masks
-                filtered_samples.append((row, col))
+        # for row, col in self.tile_centers:
+        #     img, meta = stitch_tiles(row, col, self.tiff_dir, self.tile_size)
+        #     mask = rasterize_shp(self.shapefile, meta)
+        #     img = torch.from_numpy(img).float()
+        #     mask = torch.from_numpy(mask)
+        #     # Check for all-zero masks
+        #     if torch.any(mask):  # Skip all-zero masks
+        #         filtered_samples.append((row, col))
 
-                pixels = img.view(-1)  # Flatten all pixels
-                n = pixels.numel()
-                new_mean = pixels.mean().item()
-                new_M2 = ((pixels - new_mean) ** 2).sum().item()
+        #         pixels = img.view(-1)  # Flatten all pixels
+        #         n = pixels.numel()
+        #         new_mean = pixels.mean().item()
+        #         new_M2 = ((pixels - new_mean) ** 2).sum().item()
 
-                # Combine means and M2s (parallel variance update)
-                delta = new_mean - mean
-                total_n = n_pixels + n
-                mean += delta * n / total_n
-                M2 += new_M2 + delta**2 * n_pixels * n / total_n
-                n_pixels = total_n
-            else:
-                cut_samples.append((row, col))
-            print("center parsed")
-        self.mean = mean
-        self.std = (M2 / (n_pixels - 1)) ** 0.5
+        #         # Combine means and M2s (parallel variance update)
+        #         delta = new_mean - mean
+        #         total_n = n_pixels + n
+        #         mean += delta * n / total_n
+        #         M2 += new_M2 + delta**2 * n_pixels * n / total_n
+        #         n_pixels = total_n
+        #     else:
+        #         cut_samples.append((row, col))
+        #     print("center parsed")
+        # self.mean = mean
+        # self.std = (M2 / (n_pixels - 1)) ** 0.5
 
-        print(cut_samples)
-        print(f"Streaming mean: {self.mean:.4f}, std: {self.std:.4f}")
-        print(f"Kept {len(filtered_samples)} / {len(self.center_tiles)} samples.")
+        # print(cut_samples)
+        # print(f"Streaming mean: {self.mean:.4f}, std: {self.std:.4f}")
+        # print(f"Kept {len(filtered_samples)} / {len(self.center_tiles)} samples.")
 
-        self.tile_centers = filtered_samples
+        # self.tile_centers = filtered_samples
 
 
     def __len__(self):
