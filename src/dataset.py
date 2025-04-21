@@ -142,6 +142,9 @@ def rasterize_shp(shapefile, raster_meta):
     raster_box = box(*bounds)
 
     gdf =  gdf[gdf.intersects(raster_box)]
+    
+    if gdf.empty:
+        return np.zeros((raster_meta['height'], raster_meta['width']), dtype='uint8')
 
     mask = rasterize(
         [(geom, 1) for geom in gdf.geometry],
