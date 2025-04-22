@@ -10,6 +10,8 @@ import math
 import os
 import re
 import glob
+from shapely.geometry import box
+import time
 
 class GeoTiffSegmentationDataset(Dataset):
     def __init__(self, tile_size, step_size, tiff_dir, shp_path, transform=None):
@@ -18,6 +20,8 @@ class GeoTiffSegmentationDataset(Dataset):
         self.transform = transform
         self.tile_size = tile_size
         self.step_size = step_size
+        self.mean = np.array([2015.9231, 0.68261516, 0.050694413, -6.9168976e-07], dtype=np.float32)
+        self.std = np.array([720.6632, 0.70991486, 1.8047712, 0.50734085], dtype=np.float32)
         filenames = [f for f in os.listdir(tiff_dir) if os.path.isfile(os.path.join(tiff_dir, f))]
         # print(filenames)
         self.tile_centers = []  # list of (row, col)
@@ -43,7 +47,6 @@ class GeoTiffSegmentationDataset(Dataset):
             ( 0, -1),         ( 0, 1),
             ( 1, -1), ( 1, 0), ( 1, 1)
         ]
-        print("before")
         # Keep only the coordinates where all 8 neighbors are present
         # TODO generalize to nxn
         self.tile_centers = [
@@ -55,24 +58,58 @@ class GeoTiffSegmentationDataset(Dataset):
             lambda pair: pair[0] % self.step_size == 0 and pair[1] % self.step_size == 0,
             self.tile_centers
         ))
+        print(self.tile_centers[0])
+
+
+        # sum_ = 0
+        # sum_sq = 0
+        # count = 0
+        # for row, col in self.tile_centers:
+        #     image, meta =  stitch_tiles(row, col, self.tiff_dir, self.tile_size)
+        #     # --- Compute terrain features ---
+        #     image = compute_terrain_features(image, cell_size = meta['transform'][0])
+        #     # shape: [C, H, W]
+        #     sum_ += image.sum(axis=(1, 2))
+        #     sum_sq += (image ** 2).sum(axis=(1, 2))
+        #     count += image.shape[1] * image.shape[2]
+
+        # self.mean = sum_ / count
+        # self.std = np.sqrt((sum_sq / count - self.mean**2))
+        # print("mean")
+        # print(self.mean)
+        # print("std")
+        # print(self.std)
 
 
     def __len__(self):
         return len(self.tile_centers)
 
     def __getitem__(self, idx):
+        # start_time = time.time()
         row, col = self.tile_centers[idx]
         
         # --- Load stitched image and metadata ---
         image, meta = stitch_tiles(row, col, self.tiff_dir, self.tile_size)
-        image = normalize(image)
+
+        # --- Compute terrain features ---
+        image_stack = compute_terrain_features(image, cell_size = meta['transform'][0])
+        img_tensor = normalize_with_stats(image_stack, self.mean, self.std)
+        # img_tensor = image_stack
+        img_tensor = torch.from_numpy(img_tensor).float()
+
+
         # --- Rasterize shapefile to match the image extent ---
         mask = rasterize_shp(self.shapefile, meta)
-
         # Normalize and convert to torch
-        img_tensor = torch.from_numpy(image).float()  # shape: [C, H, W]
         mask_tensor = torch.from_numpy(mask).long()   # shape: [H, W]
+        mask_bool = mask_tensor.bool()  # Make sure it's boolean (or binary 0/1)
 
+        # num_ones = mask_bool.sum().item()
+        # num_pixels = mask_bool.numel()
+        # num_zeros = num_pixels - num_ones
+
+        # print(f"Number of 1s: {num_ones}")
+        # print(f"Number of 0s: {num_zeros}")
         # Apply any custom transform (augmentations etc.)
         if self.transform:
             img_tensor, mask_tensor = self.transform(img_tensor, mask_tensor)
@@ -80,12 +117,46 @@ class GeoTiffSegmentationDataset(Dataset):
         img_tensor, original_size = pad_to_multiple(img_tensor, 16)
         mask_tensor, _ = pad_to_multiple(mask_tensor.unsqueeze(0), 16)
         mask_tensor = mask_tensor.squeeze(0)
+            
+        # print(f"Shape Img: {img_tensor.shape}")
+        # print(f"Shape Mask: {mask_tensor.shape}")
 
+        # --- Downsample both image and mask ---
+        scale = 0.5  # or any float < 1.0
+
+        # Downsample image: [C, H, W] -> [1, C, H, W] -> interpolate -> [C, h, w]
+        img_tensor = F.interpolate(img_tensor.unsqueeze(0), scale_factor=scale, mode='bilinear', align_corners=False)
+        img_tensor = img_tensor.squeeze(0)
+
+        # Downsample mask: [H, W] -> [1, 1, H, W] -> interpolate -> [h, w]
+        mask_tensor = F.interpolate(mask_tensor.unsqueeze(0).unsqueeze(0).float(), scale_factor=scale, mode='nearest')
+        mask_tensor = mask_tensor.squeeze(0).squeeze(0).long()
+
+        # end_time = time.time()
+        # print(f"Execution time: {end_time - start_time:.4f} seconds")
         return img_tensor, mask_tensor
 
-#TODO improve to mean/std dataset stats img = (img - mean) / std
-def normalize(img):
-    return (img - img.min()) / (img.max() - img.min() + 1e-8)
+    #TODO calculate mean/std as [C]
+def normalize_with_stats(stack, mean, std, eps=1e-6):
+    return (stack - mean[:, None, None]) / (std[:, None, None] + eps)
+
+def compute_terrain_features(dem, cell_size=1.0):
+    """
+    dem: np.ndarray of shape [H, W] with elevation values
+    Returns: slope, aspect, curvature as np.ndarrays of shape [H, W]
+    """
+    if dem.ndim == 3:
+        dem = np.squeeze(dem)  # Convert [1, H, W] → [H, W]
+    dzdx = np.gradient(dem, axis=1) / cell_size
+    dzdy = np.gradient(dem, axis=0) / cell_size
+
+    slope = np.sqrt(dzdx**2 + dzdy**2)
+    aspect = np.arctan2(-dzdy, dzdx)  # negative dzdy so north is 0
+
+    # Curvature: simplified as Laplacian
+    curvature = np.gradient(dzdx, axis=1) + np.gradient(dzdy, axis=0)
+
+    return np.stack([dem, slope, aspect, curvature], axis=0)
 
 def get_tile_filename(row, col, base_dir):
     pattern = os.path.join(base_dir, f"swissalti3d_*_{row}-{col}_2_2056_5728.tif")
@@ -134,6 +205,17 @@ def stitch_tiles(center_row, center_col, base_dir, n_tiles):
 
 def rasterize_shp(shapefile, raster_meta):
     gdf = shapefile.to_crs(raster_meta['crs'])
+
+    bounds = rasterio.transform.array_bounds(
+        raster_meta['height'], raster_meta['width'], raster_meta['transform']
+    )
+    raster_box = box(*bounds)
+
+    gdf =  gdf[gdf.intersects(raster_box)]
+    
+    if gdf.empty:
+        return np.zeros((raster_meta['height'], raster_meta['width']), dtype='uint8')
+
     mask = rasterize(
         [(geom, 1) for geom in gdf.geometry],
         out_shape=(raster_meta['height'], raster_meta['width']),
