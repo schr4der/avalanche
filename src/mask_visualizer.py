@@ -24,7 +24,7 @@ if device == "cuda":
     num_workers = torch.cuda.device_count() * 1
     torch.cuda.empty_cache()
 else:
-    num_workers = 4
+    num_workers = 6
 
 dataset = GeoTiffSegmentationDataset(3, 3, "../data/swiss_topo_v1/swiss_topo/", "../data/ava_outlines/outlines2018.shp")
 dataloader = DataLoader(dataset=dataset,

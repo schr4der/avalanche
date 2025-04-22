@@ -1,16 +1,18 @@
+import simpleModel
 import torch
 import matplotlib.pyplot as plt
 from dataset import GeoTiffSegmentationDataset
 from simpleModel import SimpleFCN  # or UNet if you're using that
 from uNetSmaller import UNet_Modified
 from torch.utils.data import random_split
+import uNetSmaller
 
 def visualize_prediction():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Load dataset
     generator = torch.Generator().manual_seed(421)
-    dataset = GeoTiffSegmentationDataset(3, 3, "../data/swiss_topo_v1/swiss_topo/", "../data/ava_outlines/outlines2018.shp")
+    dataset = GeoTiffSegmentationDataset(3, 3, "../data/swiss_topo_v2/", "../data/ava_outlines/outlines2018.shp")
 
     # Create test split
     train_dataset, test_dataset = random_split(dataset, [0.8, 0.2], generator=generator)
@@ -22,7 +24,7 @@ def visualize_prediction():
     model.eval()
 
     # Pick one sample from the test dataset
-    img, true_mask = test_dataset[50]
+    img, true_mask = test_dataset[25]
     print(img)
     train_img, train_mask = train_dataset[19]
     img = img.unsqueeze(0).float().to(device)  # add batch dimension
