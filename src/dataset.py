@@ -11,6 +11,7 @@ import os
 import re
 import glob
 from shapely.geometry import box
+import time
 
 class GeoTiffSegmentationDataset(Dataset):
     def __init__(self, tile_size, step_size, tiff_dir, shp_path, transform=None):
@@ -19,8 +20,8 @@ class GeoTiffSegmentationDataset(Dataset):
         self.transform = transform
         self.tile_size = tile_size
         self.step_size = step_size
-        self.mean = 2086.4147
-        self.std = 647.2937
+        self.mean = np.array([2015.9231, 0.68261516, 0.050694413, -6.9168976e-07], dtype=np.float32)
+        self.std = np.array([720.6632, 0.70991486, 1.8047712, 0.50734085], dtype=np.float32)
         filenames = [f for f in os.listdir(tiff_dir) if os.path.isfile(os.path.join(tiff_dir, f))]
         # print(filenames)
         self.tile_centers = []  # list of (row, col)
@@ -57,70 +58,58 @@ class GeoTiffSegmentationDataset(Dataset):
             lambda pair: pair[0] % self.step_size == 0 and pair[1] % self.step_size == 0,
             self.tile_centers
         ))
+        print(self.tile_centers[0])
 
-        # Added: build samples and compute stats
-        filtered_samples = []
-        cut_samples = []
-        n_pixels = 0
-        mean = 0.0
-        M2 = 0.0
 
+        # sum_ = 0
+        # sum_sq = 0
+        # count = 0
         # for row, col in self.tile_centers:
-        #     img, meta = stitch_tiles(row, col, self.tiff_dir, self.tile_size)
-        #     mask = rasterize_shp(self.shapefile, meta)
-        #     img = torch.from_numpy(img).float()
-        #     mask = torch.from_numpy(mask)
-        #     # Check for all-zero masks
-        #     if torch.any(mask):  # Skip all-zero masks
-        #         filtered_samples.append((row, col))
+        #     image, meta =  stitch_tiles(row, col, self.tiff_dir, self.tile_size)
+        #     # --- Compute terrain features ---
+        #     image = compute_terrain_features(image, cell_size = meta['transform'][0])
+        #     # shape: [C, H, W]
+        #     sum_ += image.sum(axis=(1, 2))
+        #     sum_sq += (image ** 2).sum(axis=(1, 2))
+        #     count += image.shape[1] * image.shape[2]
 
-        #         pixels = img.view(-1)  # Flatten all pixels
-        #         n = pixels.numel()
-        #         new_mean = pixels.mean().item()
-        #         new_M2 = ((pixels - new_mean) ** 2).sum().item()
-
-        #         # Combine means and M2s (parallel variance update)
-        #         delta = new_mean - mean
-        #         total_n = n_pixels + n
-        #         mean += delta * n / total_n
-        #         M2 += new_M2 + delta**2 * n_pixels * n / total_n
-        #         n_pixels = total_n
-        #     else:
-        #         cut_samples.append((row, col))
-        #     print("center parsed")
-        # self.mean = mean
-        # self.std = (M2 / (n_pixels - 1)) ** 0.5
-
-        # print(cut_samples)
-        # print(f"Streaming mean: {self.mean:.4f}, std: {self.std:.4f}")
-        # print(f"Kept {len(filtered_samples)} / {len(self.center_tiles)} samples.")
-
-        # self.tile_centers = filtered_samples
+        # self.mean = sum_ / count
+        # self.std = np.sqrt((sum_sq / count - self.mean**2))
+        # print("mean")
+        # print(self.mean)
+        # print("std")
+        # print(self.std)
 
 
     def __len__(self):
         return len(self.tile_centers)
 
     def __getitem__(self, idx):
+        # start_time = time.time()
         row, col = self.tile_centers[idx]
         
         # --- Load stitched image and metadata ---
         image, meta = stitch_tiles(row, col, self.tiff_dir, self.tile_size)
-        image = self.normalize(image)
+
+        # --- Compute terrain features ---
+        image_stack = compute_terrain_features(image, cell_size = meta['transform'][0])
+        img_tensor = normalize_with_stats(image_stack, self.mean, self.std)
+        # img_tensor = image_stack
+        img_tensor = torch.from_numpy(img_tensor).float()
+
+
         # --- Rasterize shapefile to match the image extent ---
         mask = rasterize_shp(self.shapefile, meta)
-
         # Normalize and convert to torch
-        img_tensor = torch.from_numpy(image).float()  # shape: [C, H, W]
         mask_tensor = torch.from_numpy(mask).long()   # shape: [H, W]
         mask_bool = mask_tensor.bool()  # Make sure it's boolean (or binary 0/1)
 
-        num_ones = mask_bool.sum().item()
-        num_pixels = mask_bool.numel()
-        num_zeros = num_pixels - num_ones
+        # num_ones = mask_bool.sum().item()
+        # num_pixels = mask_bool.numel()
+        # num_zeros = num_pixels - num_ones
 
-        print(f"Number of 1s: {num_ones}")
-        print(f"Number of 0s: {num_zeros}")
+        # print(f"Number of 1s: {num_ones}")
+        # print(f"Number of 0s: {num_zeros}")
         # Apply any custom transform (augmentations etc.)
         if self.transform:
             img_tensor, mask_tensor = self.transform(img_tensor, mask_tensor)
@@ -142,15 +131,32 @@ class GeoTiffSegmentationDataset(Dataset):
         # Downsample mask: [H, W] -> [1, 1, H, W] -> interpolate -> [h, w]
         mask_tensor = F.interpolate(mask_tensor.unsqueeze(0).unsqueeze(0).float(), scale_factor=scale, mode='nearest')
         mask_tensor = mask_tensor.squeeze(0).squeeze(0).long()
-            
-        # print(f"Downsampled Shape Img: {img_tensor.shape}")
-        # print(f"Downsampled Shape Mask: {mask_tensor.shape}")
 
+        # end_time = time.time()
+        # print(f"Execution time: {end_time - start_time:.4f} seconds")
         return img_tensor, mask_tensor
 
-    #TODO improve to mean/std dataset stats img = (img - mean) / std
-    def normalize(self, img):
-        return (img - self.mean) /self.std
+    #TODO calculate mean/std as [C]
+def normalize_with_stats(stack, mean, std, eps=1e-6):
+    return (stack - mean[:, None, None]) / (std[:, None, None] + eps)
+
+def compute_terrain_features(dem, cell_size=1.0):
+    """
+    dem: np.ndarray of shape [H, W] with elevation values
+    Returns: slope, aspect, curvature as np.ndarrays of shape [H, W]
+    """
+    if dem.ndim == 3:
+        dem = np.squeeze(dem)  # Convert [1, H, W] → [H, W]
+    dzdx = np.gradient(dem, axis=1) / cell_size
+    dzdy = np.gradient(dem, axis=0) / cell_size
+
+    slope = np.sqrt(dzdx**2 + dzdy**2)
+    aspect = np.arctan2(-dzdy, dzdx)  # negative dzdy so north is 0
+
+    # Curvature: simplified as Laplacian
+    curvature = np.gradient(dzdx, axis=1) + np.gradient(dzdy, axis=0)
+
+    return np.stack([dem, slope, aspect, curvature], axis=0)
 
 def get_tile_filename(row, col, base_dir):
     pattern = os.path.join(base_dir, f"swissalti3d_*_{row}-{col}_2_2056_5728.tif")

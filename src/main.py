@@ -3,6 +3,7 @@ from model import UNet
 from simpleModel import SimpleFCN
 from uNetSmaller import UNet_Modified
 from utils import dice_coefficient
+from UNet3 import UNet3
 
 from torch.utils.data import DataLoader, random_split
 from torch import Generator, nn
@@ -35,9 +36,7 @@ def main():
     # Load Dataset 
     generator = Generator().manual_seed(421)
     tile_centers = [(2594,1128)]
-    dataset = GeoTiffSegmentationDataset(3, 3, "../data/swiss_topo_v1/swiss_topo/", "../data/ava_outlines/outlines2018.shp")
-
-
+    dataset = GeoTiffSegmentationDataset(3, 3, "../data/swiss_topo_v2/swiss_topo/", "../data/ava_outlines/outlines2018.shp")
 
     # Split test/train/val
     train_dataset, test_dataset = random_split(dataset, [0.8, 0.2], generator=generator)
@@ -45,7 +44,7 @@ def main():
 
     # Setup Model
     LEARNING_RATE = 3e-4
-    BATCH_SIZE = 4
+    BATCH_SIZE = 2
 
     train_dataloader = DataLoader(dataset=train_dataset,
                                 num_workers=num_workers, pin_memory=False,
@@ -62,7 +61,7 @@ def main():
                                 batch_size=BATCH_SIZE,
                                 shuffle=True)
 
-    model = UNet_Modified(in_channels=1, num_classes=1).to(device)
+    model = UNet(in_channels=4, num_classes=1).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE)
     pos_weight = torch.tensor([3]).to(device)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
@@ -87,6 +86,10 @@ def main():
             mask = mask.unsqueeze(1)
             
             y_pred = model(img)
+            print("img/mask/pred")
+            # print(img)
+            # print(mask)
+            print(y_pred.mean())
             _, _, h_tgt, w_tgt = mask.shape
             y_pred = y_pred[:, :, :h_tgt, :w_tgt]
             optimizer.zero_grad()
@@ -109,7 +112,6 @@ def main():
         model.eval()
         val_running_loss = 0
         val_running_dc = 0
-        
         with torch.no_grad():
             for idx, img_mask in enumerate(tqdm(val_dataloader, position=0, leave=True)):
                 img = img_mask[0].float().to(device)
@@ -125,7 +127,6 @@ def main():
 
             val_loss = val_running_loss / (idx + 1)
             val_dc = val_running_dc / (idx + 1)
-        
         val_losses.append(val_loss)
         val_dcs.append(val_dc)
 

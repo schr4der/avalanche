@@ -26,7 +26,7 @@ if device == "cuda":
 else:
     num_workers = 4
 
-dataset = GeoTiffSegmentationDataset(3, 3, "../data/swiss_topo_v1/swiss_topo/", "../data/ava_outlines/outlines2018.shp")
+dataset = GeoTiffSegmentationDataset(3, 3, "../data/swiss_topo_v2/swiss_topo/", "../data/ava_outlines/outlines2018.shp")
 dataloader = DataLoader(dataset=dataset,
                             num_workers=num_workers, pin_memory=False,
                             batch_size=1,
