@@ -89,7 +89,6 @@ def main():
             print("img/mask/pred")
             # print(img)
             # print(mask)
-            print(y_pred.mean())
             _, _, h_tgt, w_tgt = mask.shape
             y_pred = y_pred[:, :, :h_tgt, :w_tgt]
             optimizer.zero_grad()

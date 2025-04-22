@@ -24,7 +24,7 @@ def visualize_prediction():
     model.eval()
 
     # Pick one sample from the test dataset
-    img_full, true_mask = test_dataset[0]
+    img_full, true_mask = test_dataset[19]
     img = img_full[0]
     print(f"Max: {torch.max(img).item()}, Min: {torch.min(img).item()}")
     img_slope = img_full[1]
@@ -37,7 +37,6 @@ def visualize_prediction():
     img_aspect = img_aspect.cpu().numpy()
     img = img.cpu().numpy()
     img_curve = img_curve.cpu().numpy()
-    print(img.shape)
     # train_img, train_mask = train_dataset[19]
     # img = img.unsqueeze(0).float().to(device)  # add batch dimension
     img_full = img_full.unsqueeze(0).float().to(device)
@@ -46,7 +45,6 @@ def visualize_prediction():
         pred_mask = torch.sigmoid(pred_mask)
         pred_mask = pred_mask.squeeze().cpu().numpy()
     # img_slope = img_full[1]
-    print(img.shape)
     true_mask = true_mask.numpy()
 
     plt.imshow(pred_mask.squeeze(), cmap='viridis')
