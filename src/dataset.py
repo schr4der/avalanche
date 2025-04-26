@@ -11,7 +11,9 @@ import os
 import re
 import glob
 from shapely.geometry import box
+from scipy.ndimage import gaussian_filter
 import time
+from tqdm import tqdm
 
 class GeoTiffSegmentationDataset(Dataset):
     def __init__(self, tile_size, step_size, tiff_dir, shp_path, transform=None):
@@ -20,8 +22,8 @@ class GeoTiffSegmentationDataset(Dataset):
         self.transform = transform
         self.tile_size = tile_size
         self.step_size = step_size
-        self.mean = np.array([2015.9231, 0.68261516, 0.050694413, -6.9168976e-07], dtype=np.float32)
-        self.std = np.array([720.6632, 0.70991486, 1.8047712, 0.50734085], dtype=np.float32)
+        self.mean = np.array([2.01592310e+03, 9.13464615e-04, 5.35885466e-02, -5.61953177e-10])
+        self.std = np.array([7.20663286e+02, 8.06257248e-04, 1.80814646e+00, 3.35383448e-04])
         filenames = [f for f in os.listdir(tiff_dir) if os.path.isfile(os.path.join(tiff_dir, f))]
         # print(filenames)
         self.tile_centers = []  # list of (row, col)
@@ -58,27 +60,51 @@ class GeoTiffSegmentationDataset(Dataset):
             lambda pair: pair[0] % self.step_size == 0 and pair[1] % self.step_size == 0,
             self.tile_centers
         ))
-        print(self.tile_centers[0])
 
 
         # sum_ = 0
         # sum_sq = 0
         # count = 0
-        # for row, col in self.tile_centers:
-        #     image, meta =  stitch_tiles(row, col, self.tiff_dir, self.tile_size)
-        #     # --- Compute terrain features ---
-        #     image = compute_terrain_features(image, cell_size = meta['transform'][0])
-        #     # shape: [C, H, W]
-        #     sum_ += image.sum(axis=(1, 2))
-        #     sum_sq += (image ** 2).sum(axis=(1, 2))
+        # self.mean = np.zeros(4)
+        # self.std = np.zeros(4)
+
+        # # --- Mean/Std on Raw Data (Layer 0 only) ---
+        # for row, col in tqdm(self.tile_centers):
+        #     image, meta = stitch_tiles(row, col, self.tiff_dir, self.tile_size)  # image shape: (1, H, W)
+
+        #     sum_ += image.sum(axis=(1, 2))         # shape (1,)
+        #     sum_sq += (image ** 2).sum(axis=(1, 2))  # shape (1,)
         #     count += image.shape[1] * image.shape[2]
 
-        # self.mean = sum_ / count
-        # self.std = np.sqrt((sum_sq / count - self.mean**2))
-        # print("mean")
-        # print(self.mean)
-        # print("std")
-        # print(self.std)
+        # self.mean[0] = sum_ / count
+        # self.std[0] = np.sqrt((sum_sq / count) - self.mean[0] ** 2)
+
+        # print("mean (raw):", self.mean)
+        # print("std  (raw):", self.std)
+
+        # # --- Mean/Std for Derived Features (Layers 1–3) ---
+        # sum_der = np.zeros(3)
+        # sum_sq_der = np.zeros(3)
+        # count_der = 0
+
+        # for row, col in tqdm(self.tile_centers):
+        #     image, meta = stitch_tiles(row, col, self.tiff_dir, self.tile_size)
+
+        #     img_normalized = normalize_with_stats(image, self.mean[0:1], self.std[0:1])
+        #     blurred_image = gaussian_filter(img_normalized, sigma=(0, 1, 1))
+
+        #     # Compute features, take only layers 1:4 (slope, aspect, curvature, etc.)
+        #     image_stack = compute_terrain_features(blurred_image, cell_size=meta['transform'][0])[1:4]  # shape: (3, H, W)
+
+        #     sum_der += image_stack.sum(axis=(1, 2))  # shape: (3,)
+        #     sum_sq_der += (image_stack ** 2).sum(axis=(1, 2))  # shape: (3,)
+        #     count_der += image_stack.shape[1] * image_stack.shape[2]
+
+        # self.mean[1:4] = sum_der / count_der
+        # self.std[1:4] = np.sqrt((sum_sq_der / count_der) - self.mean[1:4] ** 2)
+
+        # print("mean (full):", self.mean)
+        # print("std  (full):", self.std)
 
 
     def __len__(self):
@@ -90,12 +116,14 @@ class GeoTiffSegmentationDataset(Dataset):
         
         # --- Load stitched image and metadata ---
         image, meta = stitch_tiles(row, col, self.tiff_dir, self.tile_size)
-
+        img_normalized = normalize_with_stats(image, self.mean[0:1], self.std[0:1])
+        
+        blurred_image = gaussian_filter(img_normalized, sigma=(0, 1, 1))
         # --- Compute terrain features ---
-        image_stack = compute_terrain_features(image, cell_size = meta['transform'][0])
-        img_tensor = normalize_with_stats(image_stack, self.mean, self.std)
+        image_stack = compute_terrain_features(blurred_image, cell_size = meta['transform'][0])
+        image_stack[1:4] = normalize_with_stats(image_stack[1:4], self.mean[1:4], self.std[1:4])
         # img_tensor = image_stack
-        img_tensor = torch.from_numpy(img_tensor).float()
+        img_tensor = torch.from_numpy(image_stack).float()
 
 
         # --- Rasterize shapefile to match the image extent ---
