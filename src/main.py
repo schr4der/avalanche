@@ -37,7 +37,7 @@ def main():
     generator = Generator().manual_seed(421)
     tile_centers = [(2594,1128)]
     dataset = GeoTiffSegmentationDataset(3, 3, "../data/swiss_topo_v2/swiss_topo/", "../data/ava_outlines/outlines2018.shp")
-
+    print(len(dataset))
     # Split test/train/val
     train_dataset, test_dataset = random_split(dataset, [0.8, 0.2], generator=generator)
     test_dataset, val_dataset = random_split(test_dataset, [0.5, 0.5], generator=generator)
@@ -66,7 +66,7 @@ def main():
     pos_weight = torch.tensor([3]).to(device)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
-    EPOCHS = 2
+    EPOCHS = 10
 
     train_losses = []
     train_dcs = []
@@ -86,7 +86,6 @@ def main():
             mask = mask.unsqueeze(1)
             
             y_pred = model(img)
-            print("img/mask/pred")
             # print(img)
             # print(mask)
             _, _, h_tgt, w_tgt = mask.shape

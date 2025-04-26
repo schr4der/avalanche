@@ -47,23 +47,24 @@ class UpSample(nn.Module):
 class UNet(nn.Module):
     def __init__(self, in_channels, num_classes):
         super().__init__()
-        self.down1 = DownSample(in_channels, 64)
-        self.down2 = DownSample(64, 128)
-        self.down3 = DownSample(128, 256)
-        self.down4 = DownSample(256, 512)
-        self.down5 = DownSample(512, 1024)  # <- Extra downsampling layer
-        self.down6 = DownSample(1024, 2048)  # <- Extra downsampling layer
-
-        self.bottleneck = DoubleConv(2048, 4096, dilation=2)  # Atrous bottleneck
         
-        self.up1 = UpSample(4096, 2048)
-        self.up2 = UpSample(2048, 1024)
-        self.up3 = UpSample(1024, 512)
-        self.up4 = UpSample(512, 256)
-        self.up5 = UpSample(256, 128)
-        self.up6 = UpSample(128, 64)
+        self.down1 = DownSample(in_channels, 32)  # <- Extra downsampling layer
+        self.down2 = DownSample(32, 64)
+        self.down3 = DownSample(64, 128)
+        self.down4 = DownSample(128, 256)
+        self.down5 = DownSample(256, 512)
+        self.down6 = DownSample(512, 1024)  # <- Extra downsampling layer
 
-        self.out = nn.Conv2d(64, num_classes, kernel_size=1)
+        self.bottleneck = DoubleConv(1024, 2048, dilation=2)  # Atrous bottleneck
+        
+        self.up1 = UpSample(2048, 1024)
+        self.up2 = UpSample(1024, 512)
+        self.up3 = UpSample(512, 256)
+        self.up4 = UpSample(256, 128)
+        self.up5 = UpSample(128, 64)
+        self.up6 = UpSample(64, 32)
+
+        self.out = nn.Conv2d(32, num_classes, kernel_size=1)
 
     def forward(self, x):
         d1, p1 = self.down1(x)

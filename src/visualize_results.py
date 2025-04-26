@@ -24,7 +24,7 @@ def visualize_prediction():
     model.eval()
 
     # Pick one sample from the test dataset
-    img_full, true_mask = test_dataset[19]
+    img_full, true_mask = test_dataset[7]
     img = img_full[0]
     print(f"Max: {torch.max(img).item()}, Min: {torch.min(img).item()}")
     img_slope = img_full[1]
@@ -59,15 +59,15 @@ def visualize_prediction():
     plt.axis('off')
     plt.subplot(1, 6, 2)
     plt.imshow(img_slope, cmap='gray')
-    plt.title("Input Image")
+    plt.title("Gradient")
     plt.axis('off')
     plt.subplot(1, 6, 3)
     plt.imshow(img_curve, cmap='gray')
-    plt.title("Input Image")
+    plt.title("Aspect")
     plt.axis('off')
     plt.subplot(1, 6, 4)
     plt.imshow(img_aspect, cmap='gray')
-    plt.title("Input Image")
+    plt.title("Curvature")
     plt.axis('off')
 
     plt.subplot(1, 6, 5)
