@@ -1,4 +1,4 @@
-# Terrain Based Avalanche Path Prediction#
+# Terrain Based Avalanche Path Prediction
 ## Code repository by Oliver Oxford and Andrew Schrader
 
 Resource used: 
