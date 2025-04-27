@@ -54,15 +54,17 @@ class UNet(nn.Module):
         self.down4 = DownSample(128, 256)
         self.down5 = DownSample(256, 512)
         self.down6 = DownSample(512, 1024)  # <- Extra downsampling layer
+        self.down7 = DownSample(1024, 2048)  # <- Extra downsampling layer
 
-        self.bottleneck = DoubleConv(1024, 2048, dilation=2)  # Atrous bottleneck
+        self.bottleneck = DoubleConv(2048, 4096, dilation=2)  # Atrous bottleneck
         
-        self.up1 = UpSample(2048, 1024)
-        self.up2 = UpSample(1024, 512)
-        self.up3 = UpSample(512, 256)
-        self.up4 = UpSample(256, 128)
-        self.up5 = UpSample(128, 64)
-        self.up6 = UpSample(64, 32)
+        self.up1 = UpSample(4096, 2048)
+        self.up2 = UpSample(2048, 1024)
+        self.up3 = UpSample(1024, 512)
+        self.up4 = UpSample(512, 256)
+        self.up5 = UpSample(256, 128)
+        self.up6 = UpSample(128, 64)
+        self.up7 = UpSample(64, 32)
 
         self.out = nn.Conv2d(32, num_classes, kernel_size=1)
 
@@ -73,16 +75,18 @@ class UNet(nn.Module):
         d4, p4 = self.down4(p3)
         d5, p5 = self.down5(p4)
         d6, p6 = self.down6(p5)
+        d7, p7 = self.down6(p6)
 
-        b = self.bottleneck(p6)
+        b = self.bottleneck(p7)
         
-        u1 = self.up1(b, d6)
-        u2 = self.up2(u1, d5)
-        u3 = self.up3(u2, d4)
-        u4 = self.up4(u3, d3)
-        u5 = self.up5(u4, d2)
-        u6 = self.up6(u5, d1)
+        u1 = self.up1(b, d7)
+        u2 = self.up2(u1, d6)
+        u3 = self.up3(u2, d5)
+        u4 = self.up4(u3, d4)
+        u5 = self.up5(u4, d3)
+        u6 = self.up6(u5, d2)
+        u7 = self.up7(u6, d1)
 
-        out = self.out(u6)
+        out = self.out(u7)
 
         return out
