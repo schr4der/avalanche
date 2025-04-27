@@ -31,7 +31,7 @@ def main():
         num_workers = torch.cuda.device_count() * 1
         torch.cuda.empty_cache()
     else:
-        num_workers = 4
+        num_workers = 3
 
     # Load Dataset 
     generator = Generator().manual_seed(421)
@@ -44,7 +44,7 @@ def main():
 
     # Setup Model
     LEARNING_RATE = 3e-4
-    BATCH_SIZE = 2
+    BATCH_SIZE = 1
 
     train_dataloader = DataLoader(dataset=train_dataset,
                                 num_workers=num_workers, pin_memory=False,

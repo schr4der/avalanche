@@ -152,7 +152,7 @@ class GeoTiffSegmentationDataset(Dataset):
         # --- Downsample both image and mask ---
         scale = 0.5  # or any float < 1.0
 
-        ## Downsample image: [C, H, W] -> [1, C, H, W] -> interpolate -> [C, h, w]
+        # Downsample image: [C, H, W] -> [1, C, H, W] -> interpolate -> [C, h, w]
         #img_tensor = F.interpolate(img_tensor.unsqueeze(0), scale_factor=scale, mode='bilinear', align_corners=False)
         #img_tensor = img_tensor.squeeze(0)
 

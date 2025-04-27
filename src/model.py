@@ -48,25 +48,25 @@ class UNet(nn.Module):
     def __init__(self, in_channels, num_classes):
         super().__init__()
         
-        self.down1 = DownSample(in_channels, 32)  # <- Extra downsampling layer
-        self.down2 = DownSample(32, 64)
-        self.down3 = DownSample(64, 128)
-        self.down4 = DownSample(128, 256)
-        self.down5 = DownSample(256, 512)
-        self.down6 = DownSample(512, 1024)  # <- Extra downsampling layer
-        self.down7 = DownSample(1024, 2048)  # <- Extra downsampling layer
+        self.down1 = DownSample(in_channels, 16)  # <- Extra downsampling layer
+        self.down2 = DownSample(16, 32)  # <- Extra downsampling layer
+        self.down3 = DownSample(32, 64)
+        self.down4 = DownSample(64, 128)
+        self.down5 = DownSample(128, 256)
+        self.down6 = DownSample(256, 512)
+        self.down7 = DownSample(512, 1024)  # <- Extra downsampling layer
 
-        self.bottleneck = DoubleConv(2048, 4096, dilation=2)  # Atrous bottleneck
+        self.bottleneck = DoubleConv(1024, 2048, dilation=2)  # Atrous bottleneck
         
-        self.up1 = UpSample(4096, 2048)
-        self.up2 = UpSample(2048, 1024)
-        self.up3 = UpSample(1024, 512)
-        self.up4 = UpSample(512, 256)
-        self.up5 = UpSample(256, 128)
-        self.up6 = UpSample(128, 64)
-        self.up7 = UpSample(64, 32)
+        self.up1 = UpSample(2048, 1024)
+        self.up2 = UpSample(1024, 512)
+        self.up3 = UpSample(512, 256)
+        self.up4 = UpSample(256, 128)
+        self.up5 = UpSample(128, 64)
+        self.up6 = UpSample(64, 32)
+        self.up7 = UpSample(32, 16)
 
-        self.out = nn.Conv2d(32, num_classes, kernel_size=1)
+        self.out = nn.Conv2d(16, num_classes, kernel_size=1)
 
     def forward(self, x):
         d1, p1 = self.down1(x)
@@ -75,7 +75,7 @@ class UNet(nn.Module):
         d4, p4 = self.down4(p3)
         d5, p5 = self.down5(p4)
         d6, p6 = self.down6(p5)
-        d7, p7 = self.down6(p6)
+        d7, p7 = self.down7(p6)
 
         b = self.bottleneck(p7)
         
