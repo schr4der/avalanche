@@ -69,6 +69,8 @@ def main():
     train_dcs = []
     val_losses = []
     val_dcs = []
+    test_losses = []
+    test_dcs = []
 
     # Training loop
     for epoch in tqdm(range(EPOCHS)):
@@ -134,8 +136,69 @@ def main():
         print(f"Validation DICE EPOCH {epoch + 1}: {val_dc:.4f}")
         print("-" * 30)
 
+        # Test evaluation
+        test_running_loss = 0
+        test_running_dc = 0
+
+        model.eval()
+        with torch.no_grad():
+            for idx, img_mask in enumerate(tqdm(test_dataloader, position=0, leave=True)):
+                img = img_mask[0].float().to(device)
+                mask = img_mask[1].float().to(device)
+                mask = mask.unsqueeze(1)
+
+                y_pred = model(img)
+                loss = criterion(y_pred, mask)
+                dc = dice_coefficient(torch.sigmoid(y_pred), mask)
+
+                test_running_loss += loss.item()
+                test_running_dc += dc.item()
+
+            test_loss = test_running_loss / (idx + 1)
+            test_dc = test_running_dc / (idx + 1)
+
+        test_losses.append(test_loss)
+        test_dcs.append(test_dc)
+
+        print(f"Test Loss EPOCH {epoch + 1}: {test_loss:.4f}")
+        print(f"Test DICE EPOCH {epoch + 1}: {test_dc:.4f}")
+        print("-" * 30)
+
+
+
     # Saving the model
     torch.save(model.state_dict(), 'my_checkpoint.pth')
+
+    # Plot Loss and Dice over Epochs
+    epochs = range(1, EPOCHS + 1)
+
+    # Plot Losses
+    plt.figure(figsize=(8,6))
+    plt.plot(epochs, train_losses, label='Train Loss', marker='o')
+    plt.plot(epochs, val_losses, label='Validation Loss', marker='o')
+    plt.plot(epochs, test_losses, label='Test Loss', marker='o')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Training, Validation, and Test Loss')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig('loss_curve.png')
+    plt.show()
+
+    # Plot Dice Coefficients
+    plt.figure(figsize=(8,6))
+    plt.plot(epochs, train_dcs, label='Train Dice', marker='o')
+    plt.plot(epochs, val_dcs, label='Validation Dice', marker='o')
+    plt.plot(epochs, test_dcs, label='Test Dice', marker='o')
+    plt.xlabel('Epoch')
+    plt.ylabel('Dice Coefficient')
+    plt.title('Training, Validation, and Test Dice Coefficient')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig('dice_curve.png')
+    plt.show()
 
 if __name__ == "__main__":
     main()
