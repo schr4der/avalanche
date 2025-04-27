@@ -1,12 +1,13 @@
 import torch
 import matplotlib.pyplot as plt
 from dataset import GeoTiffSegmentationDataset
-from simpleModel import SimpleFCN  # or UNet if you're using that
+from mini_CNN import SimpleFCN  # or UNet if you're using that
 from uNetSmaller import UNet_Modified
 from UNet3 import UNet3
 from model import UNet
 from torch.utils.data import random_split
 
+# Utility script to visualize model predictions alongside computed data features
 def visualize_prediction():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 

@@ -22,10 +22,10 @@ class GeoTiffSegmentationDataset(Dataset):
         self.transform = transform
         self.tile_size = tile_size
         self.step_size = step_size
-        self.mean = np.array([2.01592310e+03, 9.13464615e-04, 5.35885466e-02, -5.61953177e-10])
+        self.mean = np.array([2.01592310e+03, 9.13464615e-04, 5.35885466e-02, -5.61953177e-10]) #previously computed on full dataset and saved for efficiency 
         self.std = np.array([7.20663286e+02, 8.06257248e-04, 1.80814646e+00, 3.35383448e-04])
         filenames = [f for f in os.listdir(tiff_dir) if os.path.isfile(os.path.join(tiff_dir, f))]
-        # print(filenames)
+
         self.tile_centers = []  # list of (row, col)
         for filename in filenames:
             match = re.search(r'_(\d+-\d+)_', filename)
@@ -38,9 +38,6 @@ class GeoTiffSegmentationDataset(Dataset):
                 print(filename)
                 print("error: unrecognized tif file format")
 
-        
-        
-        # Convert to a set for fast lookup
         coord_set = set(self.tile_centers)
 
         # Define relative offsets for 8 neighbors
@@ -50,7 +47,6 @@ class GeoTiffSegmentationDataset(Dataset):
             ( 1, -1), ( 1, 0), ( 1, 1)
         ]
         # Keep only the coordinates where all 8 neighbors are present
-        # TODO generalize to nxn
         self.tile_centers = [
             (x, y)
             for (x, y) in self.tile_centers
@@ -61,7 +57,7 @@ class GeoTiffSegmentationDataset(Dataset):
             self.tile_centers
         ))
 
-
+        #Code to calculate mean and std of the full dataset
         # sum_ = 0
         # sum_sq = 0
         # count = 0
@@ -111,7 +107,6 @@ class GeoTiffSegmentationDataset(Dataset):
         return len(self.tile_centers)
 
     def __getitem__(self, idx):
-        # start_time = time.time()
         row, col = self.tile_centers[idx]
         
         # --- Load stitched image and metadata ---
@@ -122,22 +117,15 @@ class GeoTiffSegmentationDataset(Dataset):
         # --- Compute terrain features ---
         image_stack = compute_terrain_features(blurred_image, cell_size = meta['transform'][0])
         image_stack[1:4] = normalize_with_stats(image_stack[1:4], self.mean[1:4], self.std[1:4])
-        # img_tensor = image_stack
         img_tensor = torch.from_numpy(image_stack).float()
 
 
         # --- Rasterize shapefile to match the image extent ---
         mask = rasterize_shp(self.shapefile, meta)
         # Normalize and convert to torch
-        mask_tensor = torch.from_numpy(mask).long()   # shape: [H, W]
-        mask_bool = mask_tensor.bool()  # Make sure it's boolean (or binary 0/1)
+        mask_tensor = torch.from_numpy(mask).long()
+        mask_bool = mask_tensor.bool()
 
-        # num_ones = mask_bool.sum().item()
-        # num_pixels = mask_bool.numel()
-        # num_zeros = num_pixels - num_ones
-
-        # print(f"Number of 1s: {num_ones}")
-        # print(f"Number of 0s: {num_zeros}")
         # Apply any custom transform (augmentations etc.)
         if self.transform:
             img_tensor, mask_tensor = self.transform(img_tensor, mask_tensor)
@@ -146,8 +134,6 @@ class GeoTiffSegmentationDataset(Dataset):
         mask_tensor, _ = pad_to_multiple(mask_tensor.unsqueeze(0), 16)
         mask_tensor = mask_tensor.squeeze(0)
             
-        # print(f"Shape Img: {img_tensor.shape}")
-        # print(f"Shape Mask: {mask_tensor.shape}")
 
         # --- Downsample both image and mask ---
         scale = 0.5  # or any float < 1.0
@@ -160,19 +146,12 @@ class GeoTiffSegmentationDataset(Dataset):
         mask_tensor = F.interpolate(mask_tensor.unsqueeze(0).unsqueeze(0).float(), scale_factor=scale, mode='nearest')
         mask_tensor = mask_tensor.squeeze(0).squeeze(0).long()
 
-        # end_time = time.time()
-        # print(f"Execution time: {end_time - start_time:.4f} seconds")
         return img_tensor, mask_tensor
 
-    #TODO calculate mean/std as [C]
 def normalize_with_stats(stack, mean, std, eps=1e-6):
     return (stack - mean[:, None, None]) / (std[:, None, None] + eps)
 
 def compute_terrain_features(dem, cell_size=1.0):
-    """
-    dem: np.ndarray of shape [H, W] with elevation values
-    Returns: slope, aspect, curvature as np.ndarrays of shape [H, W]
-    """
     if dem.ndim == 3:
         dem = np.squeeze(dem)  # Convert [1, H, W] → [H, W]
     dzdx = np.gradient(dem, axis=1) / cell_size
@@ -262,10 +241,8 @@ def pad_to_multiple(tensor, multiple):
     return F.pad(tensor, padding, mode='constant', value=0), (h, w)
 
 # #Use like:
-# #Todo train/val/test split
 # from torch.utils.data import DataLoader
 
-# # tile_centers = [(2594,1128)]
 # train_dataset = GeoTiffSegmentationDataset(3, 1, "../data/topo_maps/swiss_topo/", "../data/ava_outlines/outlines2018.shp")
 # train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True)
 # print(next(iter(train_loader)))
