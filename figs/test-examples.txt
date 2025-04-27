@@ -1,0 +1,11 @@
+These are the test examples indexs used in the paper, randomsplit uses generator seed 421 for all.
+
+Mini CNN: commit 4380bc6
+- 10 
+- 1
+- 11
+
+Feature Expansion: commit fb481c1
+- 0
+- 13
+- 19
