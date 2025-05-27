@@ -20,6 +20,8 @@ from torch.utils.data.dataset import Dataset
 from torchvision import transforms
 from tqdm import tqdm
 
+
+
 def main():
     # Setup Hardware
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -41,7 +43,7 @@ def main():
 
     # Setup Model
     LEARNING_RATE = 3e-4
-    BATCH_SIZE = 2
+    BATCH_SIZE = 6
 
     train_dataloader = DataLoader(dataset=train_dataset,
                                 num_workers=num_workers, pin_memory=False,
@@ -63,7 +65,7 @@ def main():
     pos_weight = torch.tensor([3]).to(device)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
-    EPOCHS = 10
+    EPOCHS = 50
 
     train_losses = []
     train_dcs = []
@@ -128,14 +130,6 @@ def main():
         val_losses.append(val_loss)
         val_dcs.append(val_dc)
 
-        print("-" * 30)
-        print(f"Training Loss EPOCH {epoch + 1}: {train_loss:.4f}")
-        print(f"Training DICE EPOCH {epoch + 1}: {train_dc:.4f}")
-        print("\n")
-        print(f"Validation Loss EPOCH {epoch + 1}: {val_loss:.4f}")
-        print(f"Validation DICE EPOCH {epoch + 1}: {val_dc:.4f}")
-        print("-" * 30)
-
         # Test evaluation
         test_running_loss = 0
         test_running_dc = 0
@@ -160,10 +154,16 @@ def main():
         test_losses.append(test_loss)
         test_dcs.append(test_dc)
 
+        print("-" * 30)
+        print(f"Training Loss EPOCH {epoch + 1}: {train_loss:.4f}")
+        print(f"Training DICE EPOCH {epoch + 1}: {train_dc:.4f}")
+        print("\n")
+        print(f"Validation Loss EPOCH {epoch + 1}: {val_loss:.4f}")
+        print(f"Validation DICE EPOCH {epoch + 1}: {val_dc:.4f}")
+        print("\n")
         print(f"Test Loss EPOCH {epoch + 1}: {test_loss:.4f}")
         print(f"Test DICE EPOCH {epoch + 1}: {test_dc:.4f}")
         print("-" * 30)
-
 
 
     # Saving the model

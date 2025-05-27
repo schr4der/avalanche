@@ -49,35 +49,23 @@ class UNet(nn.Module):
 
         self.down1 = DownSample(in_channels, 64)
         self.down2 = DownSample(64, 128)
-        self.down3 = DownSample(128, 256)
-        self.down4 = DownSample(256, 512)
-        self.down5 = DownSample(512, 1024) 
 
-        self.bottleneck = DoubleConv(1024, 2048, dilation=2)  # Atrous bottleneck
+        self.bottleneck = DoubleConv(128, 256, dilation=2)  # Atrous bottleneck
         
-        self.up1 = UpSample(2048, 1024)
-        self.up2 = UpSample(1024, 512)
-        self.up3 = UpSample(512, 256)
-        self.up4 = UpSample(256, 128)
-        self.up5 = UpSample(128, 64)
+        self.up1 = UpSample(256, 128)
+        self.up2 = UpSample(128, 64)
 
         self.out = nn.Conv2d(64, num_classes, kernel_size=1)
 
     def forward(self, x):
         d1, p1 = self.down1(x)
         d2, p2 = self.down2(p1)
-        d3, p3 = self.down3(p2)
-        d4, p4 = self.down4(p3)
-        d5, p5 = self.down5(p4)
 
-        b = self.bottleneck(p5)
+        b = self.bottleneck(p2)
         
-        u1 = self.up1(b, d5)
-        u2 = self.up2(u1, d4)
-        u3 = self.up3(u2, d3)
-        u4 = self.up4(u3, d2)
-        u5 = self.up5(u4, d1)
+        u1 = self.up1(b, d2)
+        u2 = self.up2(u1, d1)
 
-        out = self.out(u5)
+        out = self.out(u2)
 
         return out
